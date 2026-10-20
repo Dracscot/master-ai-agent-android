@@ -2,6 +2,8 @@ package com.example.masterai
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,23 +21,31 @@ data class AgentUiState(
     val activeAgents: List<AgentSpec> = emptyList()
 )
 
-class AgentViewModel : ViewModel() {
+class AgentViewModel(
+    private val appContext: android.content.Context
+) : ViewModel() {
     private val _uiState = MutableStateFlow(AgentUiState())
     val uiState: StateFlow<AgentUiState> = _uiState.asStateFlow()
 
-    private val toolRegistry = ToolRegistry().apply {
-        register(SystemStatusTool())
-        register(CalculatorTool())
+    private val agentManager = AgentManager()
+    private val tokenStore = SecureTokenStore(appContext)
+    private val conversationStore = ConversationStore(appContext)
+    private val proxyClient = ProxyAiClient("http://10.0.2.2:3000")
+    private val gson = Gson()
+
+    init {
+        loadHistory()
     }
 
-    private val agentManager = AgentManager()
-
-    // In a production app, keep the API key off-device or behind a secure backend proxy.
-    private val llm = OpenAICompatibleClient(
-        baseUrl = "https://api.openai.com/v1",
-        apiKey = "PUT_YOUR_OPENAI_API_KEY_HERE",
-        model = "gpt-4o-mini"
-    )
+    private fun loadHistory() {
+        viewModelScope.launch {
+            conversationStore.historyFlow.collect { savedMessages ->
+                if (savedMessages.isNotEmpty()) {
+                    _uiState.update { it.copy(messages = savedMessages) }
+                }
+            }
+        }
+    }
 
     private fun handleCommand(userText: String) {
         when {
@@ -57,7 +67,7 @@ class AgentViewModel : ViewModel() {
                 createAgent(
                     name = "QA",
                     role = "Quality and validation",
-                    instructions = "Review the output for bugs, edge cases, and reliability."
+                    instructions = "Review outputs for correctness, edge cases, and reliability."
                 )
             }
         }
@@ -65,42 +75,67 @@ class AgentViewModel : ViewModel() {
 
     fun createAgent(name: String, role: String, instructions: String) {
         val created = agentManager.createAgent(name, role, instructions)
-        _uiState.update {
-            it.copy(activeAgents = agentManager.listAgents())
-        }
+        _uiState.update { it.copy(activeAgents = agentManager.listAgents()) }
         sendMessage("Agent '${created.name}' created successfully.")
     }
 
     fun sendMessage(text: String) {
         if (text.isBlank()) return
 
-        handleCommand(text)
-
-        viewModelScope.launch {
+        val safetyCheck = AgentSafety.validateUserRequest(text)
+        if (safetyCheck != "ok") {
             _uiState.update {
                 it.copy(
-                    messages = it.messages + ChatMessage("user", text),
-                    isBusy = true
+                    messages = it.messages + ChatMessage("assistant", safetyCheck),
+                    isBusy = false
                 )
             }
+            return
+        }
 
-            val prompt = """
-                You are the master AI agent.
-                Available tools: ${toolRegistry.names().joinToString()}
-                Active agents: ${agentManager.listAgents().joinToString { it.name }}
+        handleCommand(text)
 
-                User request:
-                $text
-            """.trimIndent()
+        val newMessages = uiState.value.messages + ChatMessage("user", text)
+        _uiState.update {
+            it.copy(
+                messages = newMessages,
+                isBusy = true
+            )
+        }
 
-            val reply = llm.complete(prompt)
+        viewModelScope.launch {
+            val promptMessages = listOf(
+                ProxyAiClient.MessageDto(
+                    role = "system",
+                    content = "You are the Master AI Agent. Keep responses concise, helpful, and safe."
+                ),
+                ProxyAiClient.MessageDto(
+                    role = "user",
+                    content = "Active agents: ${agentManager.listAgents().joinToString { it.name }}. User request: $text"
+                )
+            )
 
+            val reply = try {
+                val response = proxyClient.sendPrompt(promptMessages)
+                response
+            } catch (e: Exception) {
+                "Secure proxy request failed: ${e.message}"
+            }
+
+            val finalMessages = uiState.value.messages + ChatMessage("assistant", reply)
             _uiState.update {
                 it.copy(
-                    messages = it.messages + ChatMessage("assistant", reply),
+                    messages = finalMessages,
                     isBusy = false,
                     activeAgents = agentManager.listAgents()
                 )
+            }
+
+            conversationStore.saveHistory(finalMessages)
+
+            val token = tokenStore.getToken()
+            if (token != null) {
+                // token is available for future secure requests if needed
             }
         }
     }

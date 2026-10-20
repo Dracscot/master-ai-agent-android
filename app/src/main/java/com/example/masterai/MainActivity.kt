@@ -1,8 +1,12 @@
 package com.example.masterai
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -17,20 +21,42 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
-    private val viewModel: AgentViewModel by viewModels()
+    private val viewModel: AgentViewModel by viewModels {
+        AgentViewModelFactory(applicationContext)
+    }
+
+    private val voiceLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+            if (!spoken.isNullOrBlank()) {
+                viewModel.sendMessage(spoken)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                MasterAiScreen(viewModel)
+                MasterAiScreen(
+                    viewModel = viewModel,
+                    onVoiceClick = {
+                        voiceLauncher.launch(VoiceInput.buildIntent())
+                    }
+                )
             }
         }
     }
 }
 
 @Composable
-fun MasterAiScreen(viewModel: AgentViewModel) {
+fun MasterAiScreen(
+    viewModel: AgentViewModel,
+    onVoiceClick: () -> Unit
+) {
     val uiState by viewModel.uiState.collectAsState()
     var input by remember { mutableStateOf("") }
 
@@ -106,6 +132,12 @@ fun MasterAiScreen(viewModel: AgentViewModel) {
                 enabled = !uiState.isBusy && input.isNotBlank()
             ) {
                 Text("Send")
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Button(onClick = onVoiceClick) {
+                Text("Voice")
             }
         }
     }

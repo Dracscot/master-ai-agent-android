@@ -1,31 +1,40 @@
 # master-ai-agent-android
 
-This repository contains a deployable Android AI agent starter with a Master Agent pattern and the ability to create child agents on command.
+This repository contains a production-ready Android AI agent scaffold with a Master Agent architecture, child-agent creation flow, secure backend proxy, encrypted local token storage, voice input, and Play-ready signing guidance.
 
-## Features
-- Jetpack Compose Android app
-- Master Agent + child agent creation flow
-- Tool registry with calculator and system status
-- OpenAI-compatible LLM integration
-- Secure backend proxy example for API key handling
-- APK signing and production release guide
+## What is included
+- Jetpack Compose UI
+- Master agent orchestration
+- Child-agent creation flow
+- Secure Node.js backend proxy for LLM API calls
+- Encrypted token storage with `EncryptedSharedPreferences`
+- Conversation memory persistence with DataStore
+- Safety rules for tool execution and prompts
+- Voice input using Android SpeechRecognizer
+- APK release and signing instructions
 
-## Repository structure
+## Project structure
 
 ```text
 master-ai-agent-android/
 ├── app/
 │   ├── build.gradle.kts
+│   ├── keystore.properties.example
 │   ├── proguard-rules.pro
 │   └── src/
 │       ├── main/
 │       │   ├── AndroidManifest.xml
 │       │   ├── java/com/example/masterai/
 │       │   │   ├── AgentManager.kt
+│       │   │   ├── AgentSafety.kt
 │       │   │   ├── AgentViewModel.kt
-│       │   │   ├── LLMClient.kt
+│       │   │   ├── AgentViewModelFactory.kt
+│       │   │   ├── ConversationStore.kt
 │       │   │   ├── MainActivity.kt
-│       │   │   └── ToolRegistry.kt
+│       │   │   ├── ProxyAiClient.kt
+│       │   │   ├── SecureTokenStore.kt
+│       │   │   ├── ToolRegistry.kt
+│       │   │   └── VoiceInput.kt
 │       │   └── res/values/
 │       │       ├── strings.xml
 │       │       └── themes.xml
@@ -35,59 +44,56 @@ master-ai-agent-android/
 │       ├── package.json
 │       └── server.js
 ├── .gitignore
+├── APK_SIGNING_GUIDE.md
+├── README.md
 ├── build.gradle.kts
 ├── gradle.properties
 ├── settings.gradle.kts
-├── APK_SIGNING_GUIDE.md
-└── README.md
+└── app/keystore.properties.example
 ```
 
 ## Quick start
 
-1. Install Android Studio and JDK 17.
-2. Open the project in Android Studio.
-3. Make sure the Android SDK 35 platform is installed.
-4. Update the API key in `app/src/main/java/com/example/masterai/AgentViewModel.kt` or use the secure backend proxy.
-5. Build the debug APK:
+### 1. Install Android Studio and JDK 17
 
-```bash
-./gradlew assembleDebug
-```
-
-6. Install on an Android device:
-
-```bash
-adb install app/build/outputs/apk/debug/app-debug.apk
-```
-
-## Secure backend proxy
-
-For production, do not embed the LLM API key in the Android app. Use the included proxy:
+### 2. Start the secure proxy
 
 ```bash
 cd backend/proxy
 npm install
 cp .env.example .env
-# edit .env with your OpenAI API key
+# set OPENAI_API_KEY in .env
 node server.js
 ```
 
-Then point the Android app to your backend endpoint instead of directly calling OpenAI.
+### 3. Open the project in Android Studio
+
+### 4. Build debug APK
+
+```bash
+./gradlew assembleDebug
+```
+
+### 5. Install on device
+
+```bash
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
+
+## Production recommendations
+- Never embed production API keys in the APK.
+- Use secure backend proxy and encrypted storage.
+- Use app signing and Play App Signing for release.
+- Add privacy policy and Play data-safety form before upload.
+- Use safety checks before allowing tool execution.
+- Store conversation memory locally with DataStore.
 
 ## Agent creation flow
 
-Examples of commands the app can handle:
-
+Examples supported by the app:
 - "Create a researcher agent"
 - "Create a coding agent"
 - "Create a QA agent"
 
-This logic is implemented in `AgentViewModel.kt`.
-
-## Production APK build and signing
-
-See `APK_SIGNING_GUIDE.md` for the complete flow.
-
-## Important security note
-
-The app should not ship with a production API token stored in source code. Use a secure backend or a secret manager.
+## APK signing
+See `APK_SIGNING_GUIDE.md` for complete release steps.
